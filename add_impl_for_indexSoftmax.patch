@@ -1,0 +1,351 @@
+Subject: [PATCH] add impl for indexSoftmax
+---
+Index: Android.bp
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/Android.bp b/Android.bp
+--- a/Android.bp	(revision 13f0a46580b6fe500c65b7ff668c1c2ba6c01915)
++++ b/Android.bp	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -606,6 +606,7 @@
+         "src/cpu/kernels/softmax/generic/neon/fp32.cpp",
+         "src/cpu/kernels/softmax/generic/neon/impl.cpp",
+         "src/cpu/kernels/softmax/generic/neon/qasymm8.cpp",
++        "src/cpu/kernels/softmax/generic/neon/s32_signed.cpp",
+         "src/cpu/kernels/softmax/generic/neon/qasymm8_signed.cpp",
+         "src/cpu/kernels/sub/neon/fp16.cpp",
+         "src/cpu/kernels/sub/neon/qasymm8.cpp",
+Index: filelist.json
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/filelist.json b/filelist.json
+--- a/filelist.json	(revision 13f0a46580b6fe500c65b7ff668c1c2ba6c01915)
++++ b/filelist.json	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -2346,6 +2346,7 @@
+             "fp32": ["src/cpu/kernels/softmax/generic/neon/fp32.cpp"],
+             "fp16": ["src/cpu/kernels/softmax/generic/neon/fp16.cpp"],
+             "qasymm8":[ "src/cpu/kernels/softmax/generic/neon/qasymm8.cpp"],
++            "integer":[ "src/cpu/kernels/softmax/generic/neon/s32_signed.cpp"],
+             "qasymm8_signed":["src/cpu/kernels/softmax/generic/neon/qasymm8_signed.cpp"]
+           },
+           "sve": {
+Index: src/BUILD.bazel
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/BUILD.bazel b/src/BUILD.bazel
+--- a/src/BUILD.bazel	(revision 13f0a46580b6fe500c65b7ff668c1c2ba6c01915)
++++ b/src/BUILD.bazel	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -817,6 +817,7 @@
+ 	"cpu/kernels/softmax/generic/neon/fp32.cpp",
+ 	"cpu/kernels/softmax/generic/neon/impl.cpp",
+ 	"cpu/kernels/softmax/generic/neon/qasymm8.cpp",
++	"cpu/kernels/softmax/generic/neon/s32_signed.cpp",
+ 	"cpu/kernels/softmax/generic/neon/qasymm8_signed.cpp",
+ 	"cpu/kernels/sub/neon/qasymm8.cpp",
+ 	"cpu/kernels/sub/neon/qasymm8_signed.cpp",
+Index: src/CMakeLists.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt	(revision 13f0a46580b6fe500c65b7ff668c1c2ba6c01915)
++++ b/src/CMakeLists.txt	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -810,6 +810,7 @@
+ 	cpu/kernels/softmax/generic/neon/fp32.cpp
+ 	cpu/kernels/softmax/generic/neon/impl.cpp
+ 	cpu/kernels/softmax/generic/neon/qasymm8.cpp
++	cpu/kernels/softmax/generic/neon/s32_signed.cpp
+ 	cpu/kernels/softmax/generic/neon/qasymm8_signed.cpp
+ 	cpu/kernels/sub/neon/qasymm8.cpp
+ 	cpu/kernels/sub/neon/qasymm8_signed.cpp
+Index: src/cpu/kernels/CpuSoftmaxKernel.cpp
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/cpu/kernels/CpuSoftmaxKernel.cpp b/src/cpu/kernels/CpuSoftmaxKernel.cpp
+--- a/src/cpu/kernels/CpuSoftmaxKernel.cpp	(revision 13f0a46580b6fe500c65b7ff668c1c2ba6c01915)
++++ b/src/cpu/kernels/CpuSoftmaxKernel.cpp	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -85,6 +85,9 @@
+     {"neon_qu8_softmax",
+      [](const SoftmaxKernelDataTypeISASelectorData &data) { return (!data.is_log && data.dt == DataType::QASYMM8); },
+      REGISTER_QASYMM8_NEON(arm_compute::cpu::neon_qasymm8_softmax<false>)},
++    {"neon_qs32_index_softmax",
++    [](const SoftmaxKernelDataTypeISASelectorData &data) { return (!data.is_log && data.dt == DataType::S32); },
++    REGISTER_INTEGER_NEON(arm_compute::cpu::neon_s32_index_softmax<false>)},
+     {"sme2_qs8_softmax_lut_512VL",
+      [](const SoftmaxKernelDataTypeISASelectorData &data)
+      {
+Index: src/cpu/kernels/softmax/generic/neon/impl.cpp
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/cpu/kernels/softmax/generic/neon/impl.cpp b/src/cpu/kernels/softmax/generic/neon/impl.cpp
+--- a/src/cpu/kernels/softmax/generic/neon/impl.cpp	(revision 13f0a46580b6fe500c65b7ff668c1c2ba6c01915)
++++ b/src/cpu/kernels/softmax/generic/neon/impl.cpp	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -599,6 +599,178 @@
+         in_it, out_it);
+ }
+ 
++
++// 32-entry U8 lookup table (LUT) for exponential mapping (0..31).
++// The final entry (0) acts as a boundary for the maximum difference threshold.
++static constexpr float kMaxDiffThresholdF32 = 6.6f;
++static const uint8_t kExpLut32U8[32] = {
++    255, 206, 167, 135, 109, 88, 71, 57, 46, 38, 30, 25, 20, 16,
++    13, 10, 8, 7, 6, 4, 4, 3, 2, 2, 2, 1, 1, 1, 1, 1, 0, 0
++};
++
++// Preloads the 32-byte LUT into 2x16-byte registers for vqtbl2q_u8 usage.
++static inline uint8x16x2_t preload_lut32_u8(const uint8_t* table) {
++    uint8x16x2_t v_lut;
++    v_lut.val[0] = vld1q_u8(table +  0); // Indices 0..15
++    v_lut.val[1] = vld1q_u8(table + 16); // Indices 16..31
++    return v_lut;
++}
++
++// Gathers 16 U8 values from the 32-entry LUT using a vector of indices (0..31).
++static inline uint8x16_t lut32_u8_gather16_tbl(const uint8x16x2_t& v_lut, uint8x16_t v_indices) {
++    // vqtbl2q_u8 maps indices in the range [0, 31] to the combined {v_lut.val[0], v_lut.val[1]}
++    return vqtbl2q_u8(v_lut, v_indices);
++}
++
++// S32 -> U8 Index Softmax
++// Uses a U8 LUT and U16 fixed-point normalization. Outputs U8.
++// The beta parameter is embedded within the scaling factor: c_scale = sqrt(d) / (sq * sk)
++template <bool IS_LOG /* unused */>
++void neon_index_softmax_x_quantized(
++    const ITensor* in, void* /*tmp*/, ITensor* out,
++    float c_scale, int /*axis*/, const Window& window)
++{
++    ARM_COMPUTE_UNUSED(IS_LOG);
++    ARM_COMPUTE_ERROR_ON_NULLPTR(in, out);
++    ARM_COMPUTE_ERROR_ON(in->info()->data_type()  == DataType::UNKNOWN);
++    ARM_COMPUTE_ERROR_ON(in->info()->data_type()  != DataType::S32);
++    ARM_COMPUTE_ERROR_ON(out->info()->data_type() != DataType::U8);
++
++    const int width = in->info()->valid_region().shape.x();
++    Iterator in_it(in, window);
++    Iterator out_it(out, window);
++
++    // Preload the 32-byte LUT once per row execution
++    const uint8x16x2_t v_lut = preload_lut32_u8(kExpLut32U8);
++
++    // Q26 Fixed-Point Setup: index = round(delta * 31 / threshold) in [0, 31]
++    const int32_t threshold_i32  = static_cast<int32_t>(kMaxDiffThresholdF32 * c_scale + 0.5f);
++    const int32_t multiplier_i32 = static_cast<int32_t>((31.f * (1 << 26)) / threshold_i32 + 0.5f);
++
++    const int32x4_t v_multiplier = vdupq_n_s32(multiplier_i32);
++    const int32x4_t v_threshold  = vdupq_n_s32(threshold_i32);
++
++    execute_window_loop(window, [&](const Coordinates &)
++    {
++        const int32_t* in_ptr  = reinterpret_cast<const int32_t*>(in_it.ptr());
++        uint8_t* out_ptr = reinterpret_cast<uint8_t*>(out_it.ptr());
++
++        // ====================================================================
++        // PASS 1: Find the maximum value in the row (S32)
++        // ====================================================================
++        int x = 0;
++        int32x4_t v_max0 = vdupq_n_s32(std::numeric_limits<int32_t>::min());
++        int32x4_t v_max1 = vdupq_n_s32(std::numeric_limits<int32_t>::min());
++        int32x4_t v_max2 = vdupq_n_s32(std::numeric_limits<int32_t>::min());
++        int32x4_t v_max3 = vdupq_n_s32(std::numeric_limits<int32_t>::min());
++
++        for (; x + 16 <= width; x += 16) {
++            int32x4x4_t v_data = vld1q_s32_x4(in_ptr + x);
++            v_max0 = vmaxq_s32(v_max0, v_data.val[0]);
++            v_max1 = vmaxq_s32(v_max1, v_data.val[1]);
++            v_max2 = vmaxq_s32(v_max2, v_data.val[2]);
++            v_max3 = vmaxq_s32(v_max3, v_data.val[3]);
++        }
++
++        int32_t max_val = std::numeric_limits<int32_t>::min();
++        max_val = std::max(max_val, vmaxvq_s32(vmaxq_s32(vmaxq_s32(v_max0, v_max1), vmaxq_s32(v_max2, v_max3))));
++
++        // Handle remaining elements for max calculation
++        for (; x < width; ++x) {
++            max_val = std::max(in_ptr[x], max_val);
++        }
++
++        const int32x4_t v_max_val = vdupq_n_s32(max_val);
++
++        // ====================================================================
++        // PASS 2: Calculate differences, map to LUT indices, and accumulate
++        // ====================================================================
++        x = 0;
++        uint16x8_t v_row_sum_acc = vdupq_n_u16(0);
++
++        // Process in steps of 16 to perfectly align with a 128-bit uint8x16_t output
++        for (; x + 16 <= width; x += 16) {
++            // Burst load: 4 registers (64 bytes) at once to maximize bandwidth
++            int32x4x4_t v_in = vld1q_s32_x4(in_ptr + x);
++
++            // Compute clamped differences: min(max_val - current_val, threshold)
++            int32x4_t v_diff0 = vminq_s32(vsubq_s32(v_max_val, v_in.val[0]), v_threshold);
++            int32x4_t v_diff1 = vminq_s32(vsubq_s32(v_max_val, v_in.val[1]), v_threshold);
++            int32x4_t v_diff2 = vminq_s32(vsubq_s32(v_max_val, v_in.val[2]), v_threshold);
++            int32x4_t v_diff3 = vminq_s32(vsubq_s32(v_max_val, v_in.val[3]), v_threshold);
++
++            // Apply Q26 scaling to convert differences to LUT indices
++            int32x4_t v_idx32_0 = vrshrq_n_s32(vmulq_s32(v_diff0, v_multiplier), 26);
++            int32x4_t v_idx32_1 = vrshrq_n_s32(vmulq_s32(v_diff1, v_multiplier), 26);
++            int32x4_t v_idx32_2 = vrshrq_n_s32(vmulq_s32(v_diff2, v_multiplier), 26);
++            int32x4_t v_idx32_3 = vrshrq_n_s32(vmulq_s32(v_diff3, v_multiplier), 26);
++
++            // Chained narrowing operations (S32 -> S16)
++            int16x4_t v_idx16_0  = vqmovn_s32(v_idx32_0);
++            int16x8_t v_idx16_01 = vqmovn_high_s32(v_idx16_0, v_idx32_1);
++
++            int16x4_t v_idx16_2  = vqmovn_s32(v_idx32_2);
++            int16x8_t v_idx16_23 = vqmovn_high_s32(v_idx16_2, v_idx32_3);
++
++            // Chained narrowing operations (S16 -> U8)
++            uint8x8_t  v_idx8_01    = vqmovun_s16(v_idx16_01);
++            uint8x16_t v_idx8_final = vqmovun_high_s16(v_idx8_01, v_idx16_23);
++
++            // Fetch exponential values from LUT
++            uint8x16_t v_exp_vals = lut32_u8_gather16_tbl(v_lut, v_idx8_final);
++
++            // Pad, add, and accumulate to the 16-bit row sum, then store intermediate U8 results
++            v_row_sum_acc = vpadalq_u8(v_row_sum_acc, v_exp_vals);
++            vst1q_u8(out_ptr + x, v_exp_vals);
++        }
++
++        uint16_t row_sum = vaddvq_u16(v_row_sum_acc);
++
++        // Handle remaining elements for difference and accumulation
++        for (; x < width; ++x) {
++            int32_t diff = std::min(max_val - in_ptr[x], threshold_i32);
++            int32_t idx  = (diff * multiplier_i32) >> 26;
++            uint8_t val  = kExpLut32U8[idx];
++
++            row_sum += val;
++            out_ptr[x] = val;
++        }
++
++        // Early exit: if sum is exactly 255, normalization (v * 255 / 255) is a no-op
++        if (row_sum == 255) return;
++
++        // ====================================================================
++        // PASS 3: Normalize using U16 fixed-point (Q8 format)
++        // Equivalent to: round(val * 255 / row_sum)
++        // ====================================================================
++        x = 0;
++        const uint8_t norm_scale = static_cast<uint8_t>((255.f * (1 << 8)) / row_sum + 0.5f);
++        const uint8x16_t v_norm_scale = vdupq_n_u8(norm_scale);
++
++        for (; x + 16 <= width; x += 16) {
++            uint8x16_t v_vals = vld1q_u8(out_ptr + x);
++
++            // Multiply U8 values by the normalization scale (results in U16)
++            uint16x8_t v_mul_low  = vmull_u8(vget_low_u8(v_vals), vget_low_u8(v_norm_scale));
++            uint16x8_t v_mul_high = vmull_high_u8(v_vals, v_norm_scale);
++
++            // Narrowing shift right with rounding (U16 -> U8)
++            uint8x8_t  v_res_low = vrshrn_n_u16(v_mul_low, 8);
++            uint8x16_t v_res     = vrshrn_high_n_u16(v_res_low, v_mul_high, 8);
++
++            vst1q_u8(out_ptr + x, v_res);
++        }
++
++        // Handle remaining elements for normalization
++        for (; x < width; ++x) {
++            out_ptr[x] = static_cast<uint8_t>((out_ptr[x] * norm_scale) >> 8);
++        }
++    }, in_it, out_it);
++}
++
++template void neon_index_softmax_x_quantized<false>(
++    const ITensor *in, void *const tmp, ITensor *out, float beta, int axis, const Window &window);
++
+ template void neon_softmax_x_quantized<qasymm8_signed_t, true>(
+     const ITensor *in, void *const tmp, ITensor *out, float beta, int axis, const Window &window);
+ 
+Index: src/cpu/kernels/softmax/generic/neon/impl.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/cpu/kernels/softmax/generic/neon/impl.h b/src/cpu/kernels/softmax/generic/neon/impl.h
+--- a/src/cpu/kernels/softmax/generic/neon/impl.h	(revision 13f0a46580b6fe500c65b7ff668c1c2ba6c01915)
++++ b/src/cpu/kernels/softmax/generic/neon/impl.h	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -422,6 +422,11 @@
+ template <typename T, bool IS_LOG>
+ void neon_softmax_non_x_quantized(
+     const ITensor *in, void *const tmp, ITensor *out, float beta, int axis, const Window &window);
++
++template <bool IS_LOG>
++void neon_index_softmax_x_quantized(
++    const ITensor *in, void *const tmp, ITensor *out, float beta, int axis, const Window &window);
++
+ } // namespace cpu
+ } // namespace arm_compute
+ 
+Index: src/cpu/kernels/softmax/generic/neon/s32_signed.cpp
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/cpu/kernels/softmax/generic/neon/s32_signed.cpp b/src/cpu/kernels/softmax/generic/neon/s32_signed.cpp
+new file mode 100644
+--- /dev/null	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
++++ b/src/cpu/kernels/softmax/generic/neon/s32_signed.cpp	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -0,0 +1,34 @@
++#include "arm_compute/core/Helpers.h"
++
++#include "src/cpu/kernels/softmax/generic/neon/impl.h"
++
++namespace arm_compute
++{
++namespace cpu
++{
++template <bool IS_LOG>
++void neon_s32_index_softmax(const ITensor *in,
++                                 void *const    tmp,
++                                 ITensor       *out,
++                                 const float    beta,
++                                 int            axis,
++                                 const Window  &window,
++                                 const void    *lut_ptr)
++{
++    ARM_COMPUTE_UNUSED(lut_ptr);
++    if (axis == 0)
++    {
++        return neon_index_softmax_x_quantized<IS_LOG>(in, tmp, out, beta, axis, window);
++    }
++}
++
++template void neon_s32_index_softmax<false>(const ITensor *in,
++                                             void *const    tmp,
++                                             ITensor       *out,
++                                             const float    beta,
++                                             int            axis,
++                                             const Window  &window,
++                                             const void    *lut_ptr);
++
++} // namespace cpu
++} // namespace arm_compute
+Index: src/cpu/kernels/softmax/list.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/cpu/kernels/softmax/list.h b/src/cpu/kernels/softmax/list.h
+--- a/src/cpu/kernels/softmax/list.h	(revision 13f0a46580b6fe500c65b7ff668c1c2ba6c01915)
++++ b/src/cpu/kernels/softmax/list.h	(revision a1c9ed62c082fc1dc407c261eeb013328c0579a2)
+@@ -37,6 +37,7 @@
+ DECLARE_SOFTMAX_KERNEL(neon_fp16_softmax);
+ DECLARE_SOFTMAX_KERNEL(neon_qasymm8_softmax);
+ DECLARE_SOFTMAX_KERNEL(neon_qasymm8_signed_softmax);
++DECLARE_SOFTMAX_KERNEL(neon_s32_index_softmax);
+ 
+ #ifdef ARM_COMPUTE_ENABLE_SME2
+ 
