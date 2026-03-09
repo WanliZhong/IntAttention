@@ -51,7 +51,7 @@ Checkout the required version of ComputeLibrary and apply the IndexSoftmax patch
 ```bash
 cd ComputeLibrary
 git checkout v52.5.0
-git apply ../add_impl_for_llm.patch
+git apply ../add_impl_for_ACL.patch
 ```
 
 Compile the ComputeLibrary:
