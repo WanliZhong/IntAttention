@@ -1,13 +1,10 @@
 import torch
-import math
 import argparse
-import torch.ao.quantization as quant
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from lm_eval import evaluator  # EleutherAI lm-evaluation-harness
 from lm_eval.models.huggingface import HFLM  # Hugging Face adapter
 import torch.nn.functional as F
 from functools import partial
-import pysimulation as indexsoftmax
+import pysimulation
 
 def configure_intattention(method_name="IntAttention", inp_quant_bit=8, quant_bit=5, zero_thr=6.6, bitwidth=3):
     """Configure the scaled dot-product attention implementation.
@@ -30,7 +27,7 @@ def configure_intattention(method_name="IntAttention", inp_quant_bit=8, quant_bi
 
     if m in ("int_attention", "intattention", "int-attention"):
         F.scaled_dot_product_attention = partial(
-            indexsoftmax.int_attention,
+            pysimulation.int_attention,
             inp_quant_bit=inp_quant_bit,
             quant_bit=quant_bit,
             zero_thr=zero_thr,
@@ -38,19 +35,19 @@ def configure_intattention(method_name="IntAttention", inp_quant_bit=8, quant_bi
     elif m in ("idx_softmax_only", "idx_softmax", "idxsoftmaxonly"):
         # idx_softmax_only expects (query,key,value, ... , quant_bit, zero_thr)
         F.scaled_dot_product_attention = partial(
-            indexsoftmax.idx_softmax_only,
+            pysimulation.idx_softmax_only,
             inp_quant_bit=inp_quant_bit,
             quant_bit=quant_bit,
             zero_thr=zero_thr,
         )
     elif m in ("exaq_attention", "exaq", "exaq_attention"):
         F.scaled_dot_product_attention = partial(
-            indexsoftmax.exaq_attention,
+            pysimulation.exaq_attention,
             bitwidth=bitwidth,
         )
     elif m in ("quant_only", "quantonly", "quant_only"):
         F.scaled_dot_product_attention = partial(
-            indexsoftmax.quant_only,
+            pysimulation.quant_only,
             inp_quant_bit=inp_quant_bit,
         )
     else:
