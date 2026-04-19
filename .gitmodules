@@ -1,6 +1,6 @@
 [submodule "ComputeLibrary"]
-	path = ComputeLibrary
+	path = ArtifactEvaluation/ComputeLibrary
 	url = https://github.com/ARM-software/ComputeLibrary
 [submodule "deit"]
-	path = deit
+	path = ArtifactEvaluation/deit
 	url = https://github.com/facebookresearch/deit.git

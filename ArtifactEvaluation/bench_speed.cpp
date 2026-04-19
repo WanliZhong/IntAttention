@@ -1,7 +1,8 @@
 // bench_speed.cpp
 // Build example (clang++ >= 14):
-// INCDIR="path/to/ComputeLibrary"
-// LIBDIR="path/to/ComputeLibrary/build"
+// Run this from the ArtifactEvaluation/ directory.
+// INCDIR="./ComputeLibrary"
+// LIBDIR="./ComputeLibrary/build"
 // clang++ bench_speed.cpp -O3 -std=c++17 -arch arm64 \
 //   -I "$INCDIR/include" -I "$INCDIR" \
 //   "$LIBDIR/libarm_compute-static.a" \
