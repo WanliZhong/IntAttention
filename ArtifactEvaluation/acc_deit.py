@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-from timm.models import create_model
+from timm.models import create_model as timm_create_model
 
 THIS_DIR = Path(__file__).resolve().parent
 DEIT_DIR = THIS_DIR / "deit"
@@ -17,8 +17,9 @@ for path in (THIS_DIR, DEIT_DIR):
 
 from datasets import build_dataset
 from engine import evaluate
-import models  # noqa: F401
-import models_v2  # noqa: F401
+import cait_models
+import models
+import models_v2
 from pysimulation import configure_attention
 
 
@@ -41,6 +42,30 @@ def infer_input_size(model_name):
     if model_name.endswith("_448"):
         return 448
     return 224
+
+
+def build_model(model_name, num_classes, input_size, checkpoint_path):
+    builder = getattr(models, model_name, None)
+    if builder is None:
+        builder = getattr(models_v2, model_name, None)
+    if builder is None:
+        builder = getattr(cait_models, model_name, None)
+
+    if builder is not None:
+        kwargs = {"num_classes": num_classes}
+        if "img_size" in builder.__code__.co_varnames:
+            kwargs["img_size"] = input_size
+        return builder(pretrained=not checkpoint_path, **kwargs)
+
+    return timm_create_model(
+        model_name,
+        pretrained=not checkpoint_path,
+        num_classes=num_classes,
+        drop_rate=0.0,
+        drop_path_rate=0.1,
+        drop_block_rate=None,
+        img_size=input_size,
+    )
 
 
 def load_checkpoint(path):
@@ -124,15 +149,7 @@ def main(args):
     print(f"Using {args.method} for scaled dot product attention")
 
     print(f"Creating model: {args.model}")
-    model = create_model(
-        args.model,
-        pretrained=not args.checkpoint,
-        num_classes=nb_classes,
-        drop_rate=0.0,
-        drop_path_rate=0.1,
-        drop_block_rate=None,
-        img_size=args.input_size,
-    )
+    model = build_model(args.model, nb_classes, args.input_size, args.checkpoint)
 
     if args.checkpoint:
         load_model_checkpoint(model, args.checkpoint)

@@ -1,10 +1,10 @@
 # IntAttention: A Fully Integer Attention Pipeline for Efficient Edge Inference
 
-[[Paper](https://arxiv.org/abs/2511.21513)] [[MLSys](https://mlsys.org/virtual/2026/oral/3848)] [[Artifact Evaluation](./ArtifactEvaluation/README.md)]
+[[Paper](https://arxiv.org/abs/2511.21513)] [[MLSys](https://mlsys.org/virtual/2026/oral/3848)] [[Artifact Evaluation](./ArtifactEvaluation/)]
 
 This repository contains the official code for **"IntAttention: A Fully Integer Attention Pipeline for Efficient Edge Inference"** (MLSys 2026).
 
-The artifact evaluation workflow for reproducing the paper results is documented in [ArtifactEvaluation/README.md](./ArtifactEvaluation/README.md).
+The artifact evaluation workflow for reproducing the paper results is provided in [ArtifactEvaluation/](./ArtifactEvaluation/).
 
 ![](./assets/pipeline.jpg)
 
@@ -17,4 +17,3 @@ IntAttention is a fully integer attention pipeline designed for efficient edge i
 - `U8 x S8 -> S32` for probability-value mixing
 
 Compared with conventional INT8 attention pipelines that dequantize to floating point around softmax, IntAttention preserves an integer computation path throughout attention, reducing memory traffic and improving CPU efficiency while maintaining accuracy.
-
